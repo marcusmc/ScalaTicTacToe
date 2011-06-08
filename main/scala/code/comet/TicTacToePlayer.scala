@@ -9,20 +9,20 @@ import Helpers._
 import actor._
 import JE._
 
-import scala.collection._
+import scala.collection.mutable._
 import scala.xml._
 import util._
-import mutable._
 
 class TicTacToePlayer extends CometActor {
-  var boardStatus: Array[Array[String]] = Array(Array(" "," "," "),Array(" "," "," "),Array(" "," "," "))
+  var boardStatus: ArrayBuffer[ArrayBuffer[String]] = ArrayBuffer(ArrayBuffer(" "," "," "),ArrayBuffer(" "," "," "),ArrayBuffer(" "," "," "))
   var players = HashMap("X" -> "Nobody", "O" -> "Nobody")
   var symbol = "NONE"
   var gameInfo = ""
+  var winSequence:ArrayBuffer[Tuple2[Int,Int]] = new ArrayBuffer[Tuple2[Int, Int]]
   val playerId = new scala.util.Random().nextInt(50000)
   
   override def lowPriority = {
-    case TicTacToeServer.BoardChange(board: Array[Array[String]]) => {
+    case TicTacToeServer.BoardChange(board: ArrayBuffer[ArrayBuffer[String]]) => {
       gameInfo = ""
       boardStatus = board
       reRender()
@@ -38,6 +38,14 @@ class TicTacToePlayer extends CometActor {
     case TicTacToeServer.TTTStatus(status: String) =>
       gameInfo = status
       reRender()
+    case TicTacToeServer.Win(sequence) =>
+      winSequence = sequence
+      reRender()
+    case TicTacToeServer.NewGame(status) =>
+      if (status == "NEW") {
+        winSequence = new ArrayBuffer[Tuple2[Int, Int]]
+        reRender()
+      }
     case _ => println("Other lp")
   }
   
@@ -52,11 +60,22 @@ class TicTacToePlayer extends CometActor {
     	("onclick" -> SHtml.ajaxCall(ValById("oButton"), choosePlayer _ )._2)
     def renderSquare(row: Int, col: Int) = {
       val square = boardStatus(row)(col)
+      var style = "cursor:pointer;"
+      if (!winSequence.isEmpty && winSequence.contains((row, col))) {
+        println()
+        style = String.format("%s%s", style, "background-color:red;")
+      }
       if (square == TicTacToeServer.EMPTY) {
-        <td class="tttSquare" style="cursor:pointer;">&nbsp;</td> %
+        <td class="tttSquare" style={style}>&nbsp;</td> %
           ("onclick" -> SHtml.ajaxCall(JsArray(Num(row), Num(col)), move _ )._2)
       } else {
-    	  <td class="tttSquare">{boardStatus(row)(col)}</td>
+    	  <td class="tttSquare" style={style}>{boardStatus(row)(col)}</td>
+      }
+    }
+    def resetGame = {
+      if(!winSequence.isEmpty) {
+        <button id="resetButton" value="reset" type="button">{S.?("New Game")}</button> %
+        	("onclick" -> SHtml.ajaxCall(ValById("resetButton"), newGame _)._2)
       }
     }
     def symbolSelect = {
@@ -83,6 +102,7 @@ class TicTacToePlayer extends CometActor {
       </table>)
     }
   <div class="tttGameInfo">{gameInfo}</div>
+  <div>{resetGame}</div>
   <div>Your player id is: <span id="player_id">{playerId}</span></div>
   <div>{symbolSelect}</div>
   <div>{symbolDisplay}</div>
@@ -99,6 +119,10 @@ class TicTacToePlayer extends CometActor {
   }
   def choosePlayer(s:String): JsCmd = {
     TicTacToeServer ! TicTacToeServer.ChooseSymbol(playerId.toString(), s)
+    reRender()
+  }
+  def newGame(s:String): JsCmd = {
+    TicTacToeServer ! TicTacToeServer.NewGame(playerId.toString())
     reRender()
   }
 }
